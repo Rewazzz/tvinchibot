@@ -49,15 +49,19 @@ class Form(StatesGroup):
 
 # Главное меню
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
-main_menu.add(KeyboardButton("Моя анкета"), KeyboardButton("Смотреть анкеты"), KeyboardButton("Редактировать анкету"))
+main_menu.add(KeyboardButton("📄 Моя анкета"), KeyboardButton("🔍 Смотреть анкеты"), KeyboardButton("✏️ Редактировать анкету"))
 
 # Половые кнопки для выбора пола при создании и редактировании анкеты
 gender_menu = ReplyKeyboardMarkup(resize_keyboard=True)
-gender_menu.add(KeyboardButton("Мужской"), KeyboardButton("Женский"))
+gender_menu.add(KeyboardButton("👨 Мужской"), KeyboardButton("👩 Женский"))
 
 # Половые кнопки для выбора пола при поиске анкет
 search_gender_menu = ReplyKeyboardMarkup(resize_keyboard=True)
-search_gender_menu.add(KeyboardButton("Мужской"), KeyboardButton("Женский"), KeyboardButton("Неважно"))
+search_gender_menu.add(KeyboardButton("👨 Мужской"), KeyboardButton("👩 Женский"), KeyboardButton("🤷 Неважно"))
+
+# Кнопка "Меню" для поиска анкет
+search_menu = InlineKeyboardMarkup()
+search_menu.add(InlineKeyboardButton("🏠 Главное меню", callback_data='main_menu'))
 
 # Команда /start
 @dp.message_handler(commands='start')
@@ -124,7 +128,7 @@ async def process_photo(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Form.gender)
 async def process_gender(message: types.Message, state: FSMContext):
     gender = message.text.strip()
-    if gender not in ["Мужской", "Женский"]:
+    if gender not in ["👨 Мужской", "👩 Женский"]:
         await message.answer("Пожалуйста, выберите правильный пол.")
         return
     
@@ -166,7 +170,7 @@ async def cmd_menu(message: types.Message):
     await message.answer("Главное меню:", reply_markup=main_menu)
 
 # Команда "Моя анкета"
-@dp.message_handler(text="Моя анкета")
+@dp.message_handler(text="📄 Моя анкета")
 async def my_profile(message: types.Message):
     user = get_user(message.from_user.id)
     if user:
@@ -183,7 +187,7 @@ async def my_profile(message: types.Message):
         await message.answer("Ваша анкета не найдена. Пожалуйста, создайте анкету, используя команду /start.")
 
 # Команда "Редактировать анкету"
-@dp.message_handler(text="Редактировать анкету")
+@dp.message_handler(text="✏️ Редактировать анкету")
 async def edit_profile(message: types.Message):
     await message.answer("Для редактирования анкеты отправьте новую информацию о себе. Введите ваше новое имя:")
     await Form.name.set()
@@ -238,7 +242,7 @@ async def edit_photo(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Form.gender)
 async def edit_gender(message: types.Message, state: FSMContext):
     gender = message.text.strip()
-    if gender not in ["Мужской", "Женский"]:
+    if gender not in ["👨 Мужской", "👩 Женский"]:
         await message.answer("Пожалуйста, выберите правильный пол.")
         return
     
@@ -274,12 +278,12 @@ async def edit_telegram_id(message: types.Message, state: FSMContext):
     await state.finish()
 
 # Команда "Смотреть анкеты"
-@dp.message_handler(text="Смотреть анкеты")
+@dp.message_handler(text="🔍 Смотреть анкеты")
 async def search_profiles(message: types.Message):
     await message.answer("Выберите пол для поиска анкет:", reply_markup=search_gender_menu)
 
 # Обработка выбора пола для поиска
-@dp.message_handler(lambda message: message.text in ["Мужской", "Женский", "Неважно"])
+@dp.message_handler(lambda message: message.text in ["👨 Мужской", "👩 Женский", "🤷 Неважно"])
 async def process_gender_search(message: types.Message):
     gender = message.text.strip()
     users = get_all_users()
@@ -290,7 +294,7 @@ async def process_gender_search(message: types.Message):
     filtered_users = [user for user in users
                       if user[0] != user_id and (user[0], last_viewed_time) not in get_viewed_profiles(user_id)]
 
-    if gender != "Неважно":
+    if gender != "🤷 Неважно":
         filtered_users = [user for user in filtered_users if user[7] == gender]
 
     if filtered_users:
@@ -311,7 +315,7 @@ async def process_gender_search(message: types.Message):
                 reply_markup=InlineKeyboardMarkup().add(
                     InlineKeyboardButton("👍 Лайк", callback_data=f"like_{user_id}"),
                     InlineKeyboardButton("👎 Дизлайк", callback_data=f"dislike_{user_id}")
-                )
+                ).add(search_menu)
             )
     else:
         await message.answer("Анкеты не найдены.")
