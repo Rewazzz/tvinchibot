@@ -66,7 +66,7 @@ async def cmd_start(message: types.Message):
     if user:
         await message.answer("Вы уже зарегистрированы! Введите /menu для просмотра анкет.", reply_markup=main_menu)
     else:
-        await message.answer("Добро пожаловать в бот знакомств!\n\nНа данный момент наш бот в разработке. По поводу ошибок, доработок и прочего пишите в tg @semb_vosemb.\n\n Для начала создайте анкету. Введите своё имя:")
+        await message.answer("Добро пожаловать в бот знакомств! Для начала создайте анкету. Введите своё имя:")
         await Form.name.set()
 
 # Получение имени
@@ -185,42 +185,88 @@ async def my_profile(message: types.Message):
 # Команда "Редактировать анкету"
 @dp.message_handler(text="Редактировать анкету")
 async def edit_profile(message: types.Message):
-    await message.answer("Выберите что вы хотите изменить:", reply_markup=InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Имя ✏️", callback_data="edit_name"),
-        InlineKeyboardButton("Возраст 🎂", callback_data="edit_age"),
-        InlineKeyboardButton("Группа 📚", callback_data="edit_group"),
-        InlineKeyboardButton("Описание 📝", callback_data="edit_description"),
-        InlineKeyboardButton("Фото 📸", callback_data="edit_photo"),
-        InlineKeyboardButton("Пол 🚻", callback_data="edit_gender"),
-        InlineKeyboardButton("Telegram ID 📲", callback_data="edit_telegram_id")
-    ))
-
-# Обработка редактирования анкеты
-@dp.callback_query_handler(lambda c: c.data.startswith('edit_'))
-async def process_edit(callback_query: types.CallbackQuery):
-    field = callback_query.data.split('_')[1]
-    await callback_query.message.answer(f"Введите новое значение для поля '{field}':")
-    await dp.current_state(user=callback_query.from_user.id).set_state(f"edit_{field}")
+    await message.answer("Для редактирования анкеты отправьте новую информацию о себе. Введите ваше новое имя:")
+    await Form.name.set()
 
 # Обработка ввода нового значения для полей анкеты
-@dp.message_handler(lambda message: message.text, state=lambda state: state.get_state() and state.get_state().startswith("edit_"))
-async def process_edit_field(message: types.Message, state: FSMContext):
-    field = state.get_state().split('_')[1]
-    user_data = {field: message.text.strip()}
+@dp.message_handler(state=Form.name)
+async def edit_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await message.answer("Введите ваш новый возраст:")
+    await Form.next()
+
+@dp.message_handler(state=Form.age)
+async def edit_age(message: types.Message, state: FSMContext):
+    age = message.text.strip()
+    if not age.isdigit():
+        await message.answer("Возраст должен быть числом. Пожалуйста, введите возраст снова:")
+        return
+    await state.update_data(age=int(age))
+    await message.answer("Введите вашу новую группу в колледже:")
+    await Form.next()
+
+@dp.message_handler(state=Form.student_group)
+async def edit_group(message: types.Message, state: FSMContext):
+    await state.update_data(student_group=message.text.strip())
+    await message.answer("Введите новое описание себя:")
+    await Form.next()
+
+@dp.message_handler(state=Form.description)
+async def edit_description(message: types.Message, state: FSMContext):
+    await state.update_data(description=message.text.strip())
+    await message.answer("Отправьте новое фото.")
+    await Form.next()
+
+@dp.message_handler(content_types=types.ContentTypes.PHOTO, state=Form.photo)
+async def edit_photo(message: types.Message, state: FSMContext):
+    photo_id = message.photo[-1].file_id
+    file_info = await bot.get_file(photo_id)
+    file_path = file_info.file_path
+    file = await bot.download_file(file_path)
+    
+    if not os.path.exists('photos'):
+        os.makedirs('photos')
+    
+    photo_path = f"photos/{message.from_user.id}.jpg"
+    with open(photo_path, 'wb') as new_file:
+        new_file.write(file.read())
+
+    await state.update_data(photo_path=photo_path)
+    await message.answer("Выберите ваш новый пол:", reply_markup=gender_menu)
+    await Form.next()
+
+@dp.message_handler(state=Form.gender)
+async def edit_gender(message: types.Message, state: FSMContext):
+    gender = message.text.strip()
+    if gender not in ["Мужской", "Женский"]:
+        await message.answer("Пожалуйста, выберите правильный пол.")
+        return
+    
+    await state.update_data(gender=gender)
+    await message.answer("Введите ваш новый Telegram ID (например, @username):")
+    await Form.next()
+
+@dp.message_handler(state=Form.telegram_id)
+async def edit_telegram_id(message: types.Message, state: FSMContext):
+    telegram_id = message.text.strip()
+    if not telegram_id.startswith('@'):
+        await message.answer("Telegram ID должен начинаться с символа '@'. Пожалуйста, введите снова:")
+        return
+    
+    user_data = await state.get_data()
 
     try:
-        user = get_user(message.from_user.id)
-        if user:
-            user_id = user[0]
-            update_query = f"UPDATE users SET {field} = ? WHERE user_id = ?"
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute(update_query, (user_data[field], user_id))
-            conn.commit()
-            conn.close()
-            await message.answer(f"Поле '{field}' успешно обновлено!")
-        else:
-            await message.answer("Пользователь не найден.")
+        add_or_update_user(
+            message.from_user.id,
+            user_data['name'],
+            user_data['age'],
+            user_data['student_group'],
+            user_data['description'],
+            user_data['photo_path'],
+            telegram_id,
+            user_data['gender']
+        )
+        await message.answer("Ваша анкета успешно обновлена!", reply_markup=main_menu)
     except Exception as e:
         logging.error(f"Ошибка обновления данных анкеты: {e}")
         await message.answer("Ошибка обновления данных анкеты. Пожалуйста, попробуйте снова.")
